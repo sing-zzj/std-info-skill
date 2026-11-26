@@ -1,0 +1,24 @@
+{
+  "name": "std-info-skill",
+  "version": "1.0.0",
+  "description": "std-info 标准信息查询卡技能分发包：把 std-info 技能安装到 WorkBuddy / Claude Code / CodeBuddy / agents 的技能目录",
+  "bin": {
+    "std-info-skill": "./install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "install.js",
+    "skills",
+    "README.md"
+  ],
+  "keywords": [
+    "skill",
+    "std-info",
+    "workbuddy",
+    "agent-skills"
+  ],
+  "license": "MIT",
+  "private": false
+}
