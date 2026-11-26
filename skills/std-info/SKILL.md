@@ -30,6 +30,8 @@ agent_created: true
 
 **用户直接提供 PDF 文件时**（`@skill:std-info <文件路径>`）：优先级高于任何在线检索 —— 文件本身就是发布版原文。先判文字层：`get_text()` 有内容就直接提取（封面 → 公告/发布页 → 前言 → 目次 → 总则）；整本只有水印/为空则走第 3 节的 m-ocr。再从封面/前言直接读 标准号、名称、英文名、ICS/CCS、起草单位、起草人、归口、发布/实施日期；替代关系只认文件里"代替/废止"字样，没有就留空。最后再按需 WebSearch 补公告类信息（团标/地标往往没有在线公告，此时以文件为准）。
 
+**记住附件路径**：用户提供的是本地 PDF 文件时，保留其绝对路径，第 6 节上传到标信查时要一并填入表单的「附件文件（可选，PDF）」（Oliver 2026-11-26 定）。整理成信息卡时不显示这个路径（字段表不含附件），但填表步骤要用。
+
 按可信度降序排列：
 
 1. **发布公告原文**：WebSearch `"<标准号>" 公告 发布`，定位发布部门官网（政府厅局、部委、标准化管理机构）。公告是发布日期、实施日期、替代关系、归口单位的权威来源。
@@ -148,6 +150,7 @@ agent_created: true
 - 若已有保活任务，不必重开：先 `playwright-cli list` 看 `stdinfo` 是否 open，open 则直接复用。
 - 切换"信息上传"页签：`click` 普通文本会 strict violation（侧栏链接和标题都叫"信息上传"）。用 `eval 'document.querySelector("[data-form=\"form-manual-upload\"]").click()'` 最稳；切完再 `snapshot --filename=...`。
 - 取字段 ref：`snapshot --filename=<file>.yml` 后 `grep 'textbox' ... | grep -oP '\[ref=\Ke\d+(?=\])'`。该表单**恰好 18 个 textbox**，顺序固定（file input 在快照里是 `button "Choose File"`，不占 textbox ref）；`playwright-cli fill <ref> <值>` 自带滚动，不需要手动 scrollIntoView。
+- **附件 PDF 上传**（用户提供 PDF 时必做，实测 2026-11-26）：表单附件 input 是 `#manual-file`（`accept=".pdf"`）。`click` 该按钮会超时（元素可见但不可点击）、`drop` 同样超时；正确姿势是两步：先 `eval 'document.querySelector("#manual-file").click()'` 触发原生文件选择器，再 `playwright-cli upload "<PDF绝对路径>"`（upload 命令不带目标选择器，作用于当前 file chooser）。验证：`eval 'document.querySelector("#manual-file").files[0]?.name'` 应返回文件名。注意 `upload` 路径用正斜杠 `/` 或转义反斜杠；无用户 PDF 时跳过此步。
 - 点"清洗预览"：`click 'getByRole("button", { name: "清洗预览" })'` 会因底部按钮不在视口超时 5s，改用 `eval 'document.querySelector("#manual-clean-btn").click()'`。
 - 弹窗内容用 `snapshot --filename=<file>.yml` 抓取，找 `可上传` / `已存在` / `确认上传` 等字样汇报。
 - 企业标准分支：标准号 `Q/` 开头 → 用 `check <checkbox-ref>` 勾选"企业标准上传"，**重新快照取 ref**（会多出"企业名称"input，顺序后移），再填值。
@@ -158,8 +161,10 @@ agent_created: true
 
 1. 后台保活任务起 headed 浏览器（见上）→ `eval` 点击 `[data-form="form-manual-upload"]` → snapshot 取 18 个 textbox ref。
 2. **企业标准分支**：标准号 `Q/` 开头或 Oliver 明说是企业标准 → 先勾选"企业标准上传" checkbox，再重新 snapshot 取 ref。
-3. 按快照 ref 顺序填字段。textbox 出现顺序：0 标准号* → 1 标准名称 → 2 标准名称英文 → 3 发布日期 → 4 实施日期 → 5 废止日期 → 6 CCS → 7 ICS → 8 归口单位 → 9 批准发布部门 → 10 省市区 → 11 协会名称（团体标准）→ 12 主要起草单位 → 13 主要起草人 → 14 全部代替标准 → 15 全部被代替标准 → 16 引用标准 → 17 适用范围（textarea）→（附件文件是 button，跳过）。
-4. **18 字段卡 → 表单映射**（未列出的表单字段按此推断或留空）：
+3. 按快照 ref 顺序填字段。textbox 出现顺序：0 标准号* → 1 标准名称 → 2 标准名称英文 → 3 发布日期 → 4 实施日期 → 5 废止日期 → 6 CCS → 7 ICS → 8 归口单位 → 9 批准发布部门 → 10 省市区 → 11 协会名称（团体标准）→ 12 主要起草单位 → 13 主要起草人 → 14 全部代替标准 → 15 全部被代替标准 → 16 引用标准 → 17 适用范围（textarea）→（附件文件不是 textbox，见下一步）。
+4. **附件 PDF**（用户提供 PDF 时）：`eval 'document.querySelector("#manual-file").click()'` → `playwright-cli upload "<PDF绝对路径>"` → 验证 `#manual-file` 的 `files[0]` 是目标文件。无 PDF 则跳过。
+5. `eval 'document.querySelector("#manual-clean-btn").click()'` → 等弹窗出现（约 1-2s）→ snapshot 抓弹窗内容。
+6. **18 字段卡 → 表单映射**（未列出的表单字段按此推断或留空）：
 
    | 信息卡字段 | 表单字段 |
    |---|---|
@@ -184,11 +189,10 @@ agent_created: true
    - 省市区：地方标准可从标准号区号推断省份（如 DBJ33 → 浙江），推断不准就问 Oliver 或留空；国标/行标留空。
    - 协会名称（团体标准）：`T/` 开头时填发证机构全称，其余留空。
    - 标准性质/状态：表单里没有这两个字段，由清洗逻辑自动推导（弹窗会显示），无需录入。
-5. `eval 'document.querySelector("#manual-clean-btn").click()'` → 等弹窗出现（约 1-2s）→ snapshot 抓弹窗内容。
-6. **弹窗核对（默认终点）**：向 Oliver 汇报核对要点（标准号、名称、推导出的标准性质/状态、日期、替代关系、可上传/已存在）。
+7. **弹窗核对（默认终点）**：向 Oliver 汇报核对要点（标准号、名称、推导出的标准性质/状态、日期、替代关系、可上传/已存在）。
    - 状态标签"**可上传**" → **不点"确认上传"**。确认上传是写库动作（写清洗库 flag='A' 待同步），只有 Oliver 明确要求才点。
    - 状态标签"**已存在 · 不可上传**"（按钮禁用）→ 该标准号已在清洗库，**不重复上传**，直接报告 Oliver。
-7. 停在弹窗后在最终回复里汇报，**不点确认、不主动 close、不停后台保活任务**——窗口和弹窗留在桌面上供 Oliver 核对。Oliver 确认上传时直接在同会话点"确认上传"按钮（如会话已失效则重跑）。
+8. 停在弹窗后在最终回复里汇报，**不点确认、不主动 close、不停后台保活任务**——窗口和弹窗留在桌面上供 Oliver 核对。Oliver 确认上传时直接在同会话点"确认上传"按钮（如会话已失效则重跑）。
 
 **示例脚本骨架**（后台保活 + 填表分两步，实测可用）：
 
@@ -227,6 +231,10 @@ for i in "${!vals[@]}"; do
   [ -z "${vals[$i]}" ] && continue
   $P fill "${refs[$i]}" "${vals[$i]}" > /dev/null 2>&1 || echo "FAIL $i ${refs[$i]}"
 done
+# 附件 PDF（用户提供时取消注释并填绝对路径；upload 不带目标，须先 eval 触发 chooser）
+# $P eval 'document.querySelector("#manual-file").click()' > /dev/null 2>&1
+# $P upload "C:/Users/Administrator/Downloads/xxx.pdf" > /dev/null 2>&1
+# $P --raw eval 'document.querySelector("#manual-file").files[0]?.name'  # 验证文件名
 $P eval 'document.querySelector("#manual-clean-btn").click()' > /dev/null 2>&1
 sleep 2
 $P snapshot --filename=/tmp/std-info-dialog.yml > /dev/null 2>&1
